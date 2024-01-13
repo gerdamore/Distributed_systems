@@ -4,6 +4,13 @@
 #include <thread>
 #include <chrono>
 
+struct SensorData
+{
+    int moistureLevel;
+    std::time_t currentTime;
+};
+SensorData wifiData;
+
 class MoistureSensor
 {
 private:
@@ -60,6 +67,8 @@ private:
         // Send sensor data to wifi
         // Implement your logic here
         std::cout << "Sending sensor data to wifi: Moisture Level = " << moistureLevel << ", Time = " << std::ctime(&currentTime);
+        wifiData.currentTime = currentTime;
+        wifiData.moistureLevel = moistureLevel;
     }
 
     void storeSensorDataInStorage(int moistureLevel, std::time_t currentTime)
@@ -80,11 +89,58 @@ private:
     }
 };
 
+class Controller
+{
+public:
+    Controller()
+    {
+        connectToWifi();
+    }
+
+    void receiveDataFromWifi()
+    {
+        std::ofstream outputFile("received_data.txt", std::ios::app);
+        if (outputFile.is_open())
+        {
+            while (true)
+            {
+                std::time_t currentTime = std::time(nullptr);
+                std::string data = "Moisture Level = " + std::to_string(wifiData.moistureLevel) + ", Time = " + std::ctime(&currentTime);
+                outputFile << data << std::endl;
+                std::cout << "Received data: " << data;
+                std::this_thread::sleep_for(std::chrono::minutes(1));
+            }
+            outputFile.close();
+        }
+        else
+        {
+            std::cout << "Failed to open output file!" << std::endl;
+        }
+    }
+
+private:
+    void connectToWifi()
+    {
+        // Connect to wifi
+        // Implement your logic here
+        std::cout << "Connecting to wifi..." << std::endl;
+        std::this_thread::sleep_for(std::chrono::seconds(2));
+        std::cout << "Wifi connected!" << std::endl;
+    }
+};
+
+
+
 int main()
 {
+    Controller controller;
     MoistureSensor sensor(1, 4096); // Set frequency to 60 minutes and storage size to 4KB
 
-    sensor.readSensorData();
+    std::thread sensorThread(&MoistureSensor::readSensorData, &sensor);
+    std::thread controllerThread(&Controller::receiveDataFromWifi, &controller);
+
+    sensorThread.join();
+    controllerThread.join();
 
     return 0;
 }
