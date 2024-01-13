@@ -5,6 +5,7 @@
 #include <chrono>
 #include <vector>
 #include <deque>
+#include <cstdlib> // For std::rand()
 
 using namespace std;
 
@@ -41,7 +42,8 @@ public:
         // Read sensor data at set frequency
         while (true)
         {
-            int moistureLevel = 50; // Assuming 50 for demonstration purposes
+
+            int moistureLevel = std::rand() % 101; // Randomize the moisture level between 0 and 100
             std::time_t currentTime = std::time(nullptr);
 
             if (isWifiConnected())
@@ -56,6 +58,28 @@ public:
             // Sleep for the set frequency in minutes
             std::this_thread::sleep_for(std::chrono::minutes(frequency));
         }
+    }
+
+    void readSensorDataOnceAndSend()
+    {
+        int moistureLevel = std::rand() % 101; // Randomize the moisture level between 0 and 100
+        std::time_t currentTime = std::time(nullptr);
+
+        if (isWifiConnected())
+        {
+            sendSensorDataToWifi(moistureLevel, currentTime);
+        }
+        else
+        {
+            std::cout << "[MoistureSensor_ERROR] Wifi is not connected!" << std::endl;
+        }
+    }
+
+    void calibrate()
+    {
+        std::cout << "[MoistureSensor_INFO] Starting calibration..." << std::endl;
+        // Perform calibration logic here
+        std::cout << "[MoistureSensor_INFO] Calibration completed!" << std::endl;
     }
 
 private:
@@ -96,7 +120,7 @@ private:
 class Controller
 {
 public:
-    Controller()
+    Controller(MoistureSensor &sensor) : moistureSensor(sensor)
     {
         connectToWifi();
     }
@@ -157,7 +181,14 @@ public:
         return lastNSensorData;
     }
 
+    SensorData readSensor()
+    {
+        moistureSensor.readSensorDataOnceAndSend();
+        return wifiData;
+    }
+
 private:
+    MoistureSensor moistureSensor;
     void connectToWifi()
     {
         // Connect to wifi
@@ -186,23 +217,69 @@ public:
         }
     }
 
+    void requestSensorData()
+    {
+        std::cout << "[User_INFO] Request sensor data " << std::endl;
+        SensorData wifiData = controller.readSensor();
+        std::string data = "Moisture Level = " + std::to_string(wifiData.moistureLevel) + ", Time = " + std::ctime(&wifiData.currentTime);
+        std::cout << "[User_INFO] Sensor Data: " << data << std::endl;
+    }
+
 private:
     Controller &controller;
 };
 
+class IrrigationSystem
+{
+public:
+    // Set frequency to 60 minutes and storage size to 4KB
+
+    IrrigationSystem() : sensor(60, 4096), controller(sensor), user(controller)
+    {
+        sensor.calibrate();
+        std::thread sensorThread(&MoistureSensor::readSensorData, &sensor);
+        sensorThread.detach();
+        std::thread controllerThread(&Controller::receiveDataFromWifi, &controller);
+        controllerThread.detach();
+    }
+
+    void start()
+    {
+        std::string command;
+        while (std::getline(std::cin, command))
+        {
+            if (command == "1")
+            {
+                // User request sensor data
+                user.requestSensorData();
+            }
+            else if (command == "2")
+            {
+                // User request last n sensor data
+                int n;
+                std::cout << "Enter the value of n: ";
+                std::cin >> n;
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                user.getLastNSensorData(n);
+            }
+            else
+            {
+                std::cout << "Invalid command!" << std::endl;
+            }
+        }
+    }
+
+private:
+    Controller controller;
+    User user;
+    MoistureSensor sensor;
+};
+
 int main()
 {
-    Controller controller;
-    MoistureSensor sensor(1, 4096); // Set frequency to 60 minutes and storage size to 4KB
-    User user(controller);
 
-    // std::thread sensorThread(&MoistureSensor::readSensorData, &sensor);
-    // std::thread controllerThread(&Controller::receiveDataFromWifi, &controller);
-
-    // sensorThread.join();
-    // controllerThread.join();
-
-    user.getLastNSensorData(5);
+    IrrigationSystem irrigationSystem;
+    irrigationSystem.start();
 
     return 0;
 }
