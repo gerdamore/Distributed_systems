@@ -5,14 +5,19 @@
 #include <chrono>
 #include <vector>
 #include <deque>
-#include <cstdlib> // For std::rand()
+#include <cstdlib> // For rand()
 
 using namespace std;
+
+string data_requested;
+int request = 0;
+string data_requested_nlast_Data;
+int request_nlast_Data = 0;
 
 struct SensorData
 {
     int moistureLevel;
-    std::time_t currentTime;
+    time_t currentTime;
 };
 SensorData wifiData;
 
@@ -22,18 +27,38 @@ private:
     int frequency;
     int storageSize;
     int storageUsed;
+    int depth;
 
 public:
-    MoistureSensor(int freq, int maxSize)
+    MoistureSensor() : frequency(0), storageSize(0), storageUsed(0), depth(0)
+    {
+    }
+
+    MoistureSensor(int freq, int maxSize, int d)
     {
         frequency = freq;
         storageSize = maxSize;
         storageUsed = 0;
+        depth = depth;
     }
 
     void setFrequency(int freq)
     {
         frequency = freq;
+    }
+
+    int getDepth()
+    {
+        return depth;
+    }
+
+    SensorData readSensor()
+    {
+        SensorData data;
+        data.moistureLevel = rand() % 101;
+        data.currentTime = time(nullptr);
+
+        return data;
     }
 
     void readSensorData()
@@ -43,8 +68,8 @@ public:
         while (true)
         {
 
-            int moistureLevel = std::rand() % 101; // Randomize the moisture level between 0 and 100
-            std::time_t currentTime = std::time(nullptr);
+            int moistureLevel = rand() % 101; // Randomize the moisture level between 0 and 100
+            time_t currentTime = time(nullptr);
 
             if (isWifiConnected())
             {
@@ -56,14 +81,14 @@ public:
             }
 
             // Sleep for the set frequency in minutes
-            std::this_thread::sleep_for(std::chrono::minutes(frequency));
+            this_thread::sleep_for(chrono::minutes(frequency));
         }
     }
 
     void readSensorDataOnceAndSend()
     {
-        int moistureLevel = std::rand() % 101; // Randomize the moisture level between 0 and 100
-        std::time_t currentTime = std::time(nullptr);
+        int moistureLevel = rand() % 101; // Randomize the moisture level between 0 and 100
+        time_t currentTime = time(nullptr);
 
         if (isWifiConnected())
         {
@@ -71,15 +96,15 @@ public:
         }
         else
         {
-            std::cout << "[MoistureSensor_ERROR] Wifi is not connected!" << std::endl;
+            cout << "[MoistureSensor_ERROR] Wifi is not connected!" << endl;
         }
     }
 
     void calibrate()
     {
-        std::cout << "[MoistureSensor_INFO] Starting calibration..." << std::endl;
+        cout << "[MoistureSensor_INFO] Starting calibration..." << endl;
         // Perform calibration logic here
-        std::cout << "[MoistureSensor_INFO] Calibration completed!" << std::endl;
+        cout << "[MoistureSensor_INFO] Calibration completed!" << endl;
     }
 
 private:
@@ -90,37 +115,37 @@ private:
         return true; // Assuming wifi is connected for demonstration purposes
     }
 
-    void sendSensorDataToWifi(int moistureLevel, std::time_t currentTime)
+    void sendSensorDataToWifi(int moistureLevel, time_t currentTime)
     {
         // Send sensor data to wifi
         // Implement your logic here
-        std::cout << "[MoistureSensor_INFO] Sending sensor data to wifi: Moisture Level = " << moistureLevel << ", Time = " << std::ctime(&currentTime);
+        cout << "[MoistureSensor_INFO] Sending sensor data to wifi: Moisture Level = " << moistureLevel << ", Time = " << ctime(&currentTime);
         wifiData.currentTime = currentTime;
         wifiData.moistureLevel = moistureLevel;
     }
 
-    void storeSensorDataInStorage(int moistureLevel, std::time_t currentTime)
+    void storeSensorDataInStorage(int moistureLevel, time_t currentTime)
     {
         // Store sensor data in internal storage (file)
         // Implement your logic here
-        std::ofstream storageFile("sensor_data.txt", std::ios::app);
+        ofstream storageFile("sensor_data.txt", ios::app);
         if (storageFile.is_open())
         {
             int dataSize = sizeof(moistureLevel) + sizeof(currentTime);
             if (storageUsed + dataSize <= MoistureSensor::storageSize)
             {
-                storageFile << "[MoistureSensor_INFO] Moisture Level = " << moistureLevel << ", Time = " << std::ctime(&currentTime) << std::endl;
+                storageFile << "[MoistureSensor_INFO] Moisture Level = " << moistureLevel << ", Time = " << ctime(&currentTime) << endl;
                 storageFile.close();
                 storageUsed += dataSize;
             }
             else
             {
-                std::cout << "[MoistureSensor_ERROR] Storage capacity exceeded!" << std::endl;
+                cout << "[MoistureSensor_ERROR] Storage capacity exceeded!" << endl;
             }
         }
         else
         {
-            std::cout << "[MoistureSensor_ERROR] Failed to open storage file!" << std::endl;
+            cout << "[MoistureSensor_ERROR] Failed to open storage file!" << endl;
         }
     }
 };
@@ -128,113 +153,188 @@ private:
 class Controller
 {
 public:
-    Controller(MoistureSensor &sensor) : moistureSensor(sensor)
+    Controller() {}
+
+    Controller(const vector<MoistureSensor> &sensors) : sensors(sensors)
     {
         connectToWifi();
     }
 
+    void set_Sensor(const vector<MoistureSensor> &sensors)
+    {
+        this->sensors = sensors;
+    }
+
     void receiveDataFromWifi()
     {
-        std::ofstream outputFile("received_data.txt", std::ios::app);
+        ofstream outputFile("received_data.txt", ios::app);
         if (outputFile.is_open())
         {
             while (true)
             {
-                std::time_t currentTime = std::time(nullptr);
-                std::string data = "Moisture Level = " + std::to_string(wifiData.moistureLevel) + ", Time = " + std::ctime(&wifiData.currentTime);
-                outputFile << data << std::endl;
-                std::cout << "[Controller_INFO] Received data: " << data;
-                std::this_thread::sleep_for(std::chrono::minutes(1));
+                time_t currentTime = time(nullptr);
+                for (MoistureSensor &sensor : sensors)
+                {
+                    SensorData wifiData = sensor.readSensor();
+                    string data = "Moisture Level = " + to_string(wifiData.moistureLevel) + ", Time = " + ctime(&wifiData.currentTime);
+                    outputFile << data << endl;
+                    cout << "[Controller_INFO] Received data: " << data;
+                }
+                this_thread::sleep_for(chrono::minutes(1));
             }
             outputFile.close();
         }
         else
         {
-            std::cout << "[Controller_ERROR] Failed to open output file!" << std::endl;
+            cout << "[Controller_ERROR] Failed to open output file!" << endl;
         }
     }
 
-    std::vector<std::string> getLastNSensorData(int n)
+    void getLastNSensorData(int n)
     {
-        std::ifstream inputFile("received_data.txt");
-        std::vector<std::string> lastNSensorData;
-
-        if (inputFile.is_open())
+        while (true)
         {
-
-            std::string line;
-            std::deque<std::string> lines;
-
-            while (std::getline(inputFile, line))
+            if (request_nlast_Data == 1)
             {
-                lines.push_back(line);
-                if (lines.size() > n)
+                ifstream inputFile("received_data.txt");
+                string lastNSensorData;
+
+                if (inputFile.is_open())
                 {
-                    lines.pop_front();
+
+                    string line;
+                    deque<string> lines;
+
+                    while (getline(inputFile, line))
+                    {
+                        lines.push_back(line);
+                        if (lines.size() > n)
+                        {
+                            lines.pop_front();
+                        }
+                    }
+
+                    for (const string &line : lines)
+                    {
+                        lastNSensorData += line + "\n";
+                    }
+
+                    inputFile.close();
                 }
+                else
+                {
+                    cout << "[Controller_ERROR] Failed to open input file!" << endl;
+                }
+
+                data_requested_nlast_Data = lastNSensorData;
+                this_thread::sleep_for(chrono::seconds(7));
             }
-
-            for (const std::string &line : lines)
-            {
-                lastNSensorData.push_back(line);
-            }
-
-            inputFile.close();
+            // wait for 50 seconds
         }
-        else
-        {
-            std::cout << "[Controller_ERROR] Failed to open input file!" << std::endl;
-        }
-
-        return lastNSensorData;
     }
 
-    SensorData readSensor()
+    void readSensor()
     {
-        moistureSensor.readSensorDataOnceAndSend();
-        return wifiData;
+        while (true)
+        {
+            if (request == 1)
+            {
+                string sensorDataWithDepth;
+                for (MoistureSensor &sensor : sensors)
+                {
+                    SensorData sensorData = sensor.readSensor();
+                    string data = "Moisture Level = " + to_string(sensorData.moistureLevel) + ", Time = " + ctime(&sensorData.currentTime);
+                    int depth = sensor.getDepth();
+                    sensorDataWithDepth += "Sensor Depth = " + to_string(depth) + ", " + data + "\n";
+                }
+                data_requested = sensorDataWithDepth;
+                this_thread::sleep_for(chrono::seconds(7));
+            }
+            // wait for 50 seconds
+        }
     }
 
 private:
-    MoistureSensor moistureSensor;
+    vector<MoistureSensor> sensors;
     void connectToWifi()
     {
         // Connect to wifi
         // Implement your logic here
-        std::cout << "[Controller_INFO] Connecting to wifi..." << std::endl;
-        std::this_thread::sleep_for(std::chrono::seconds(2));
-        std::cout << "[Controller_INFO] Wifi connected!" << std::endl;
+        cout << "[Controller_INFO] Connecting to wifi..." << endl;
+        this_thread::sleep_for(chrono::seconds(2));
+        cout << "[Controller_INFO] Wifi connected!" << endl;
     }
 };
 
 class User
 {
 public:
-    User(Controller &controller)
-        : controller(controller)
+    User()
     {
     }
 
     void getLastNSensorData(int n)
     {
-        std::vector<string> sensorData = controller.getLastNSensorData(n);
+        cout << "[User_INFO] Request sensor data " << endl;
+        request_nlast_Data = 1;
+        // wait for 30 seconds
 
-        for (const string &data : sensorData)
-        {
-            std::cout << "[User_INFO] " << data << std::endl;
-        }
+        // string data = controller.readSensor();
+        this_thread::sleep_for(chrono::seconds(15));
+        cout << "[User_INFO] Sensor Data: " << data_requested_nlast_Data << endl;
+
+        request_nlast_Data = 0;
     }
 
     void requestSensorData()
     {
-        std::cout << "[User_INFO] Request sensor data " << std::endl;
-        SensorData wifiData = controller.readSensor();
-        std::string data = "Moisture Level = " + std::to_string(wifiData.moistureLevel) + ", Time = " + std::ctime(&wifiData.currentTime);
-        std::cout << "[User_INFO] Sensor Data: " << data << std::endl;
+
+        cout << "[User_INFO] Request sensor data " << endl;
+        request = 1;
+        // wait for 30 seconds
+
+        // string data = controller.readSensor();
+        this_thread::sleep_for(chrono::seconds(5));
+        cout << "[User_INFO] Sensor Data: " << data_requested << endl;
+
+        request = 0;
     }
 
 private:
-    Controller &controller;
+};
+
+class SoilLayer
+{
+public:
+    double depth;
+    double thickness;
+    double fieldCapacity;
+    double availableWaterHoldingCapacity;
+
+    SoilLayer() : depth(0), thickness(0), fieldCapacity(0), availableWaterHoldingCapacity(0)
+    {
+    }
+
+    SoilLayer(double depth, double thickness, double fieldCapacity, double availableWaterHoldingCapacity)
+        : depth(depth), thickness(thickness), fieldCapacity(fieldCapacity), availableWaterHoldingCapacity(availableWaterHoldingCapacity)
+    {
+    }
+
+    double calculateWaterDepthAtAWC()
+    {
+        return availableWaterHoldingCapacity * (thickness / 10.0) / 10.0; // Convert result from mm to cm
+    }
+
+    double calculateDepthAtMAD()
+    {
+        return calculateWaterDepthAtAWC() * 0.5; // Result in cm
+    }
+
+    double calculateSoilWaterDepletion(double volumetricWaterContent)
+    {
+        double waterDepletion = (fieldCapacity * thickness) - (volumetricWaterContent * thickness);
+        return waterDepletion;
+    }
 };
 
 class IrrigationSystem
@@ -242,19 +342,32 @@ class IrrigationSystem
 public:
     // Set frequency to 60 minutes and storage size to 4KB
 
-    IrrigationSystem() : sensor(60, 4096), controller(sensor), user(controller)
+    IrrigationSystem()
     {
+
+        this->soilLayer_30 = SoilLayer(30.0, 30.0, 0.25, 50.0);
+        this->soilLayer_60 = SoilLayer(60.0, 30.0, 0.21, 45.0);
+        this->soilLayer_90 = SoilLayer(90.0, 30.0, 0.19, 37.0);
+        this->sensor = MoistureSensor(1, 4096, 30);
+        this->controller = Controller({sensor});
+        this->user = User();
+
         sensor.calibrate();
-        std::thread sensorThread(&MoistureSensor::readSensorData, &sensor);
+        thread sensorThread(&MoistureSensor::readSensorData, &sensor);
         sensorThread.detach();
-        std::thread controllerThread(&Controller::receiveDataFromWifi, &controller);
+        thread controllerThread(&Controller::receiveDataFromWifi, &controller);
         controllerThread.detach();
+        thread controllerThread_readsensor(&Controller::readSensor, &controller);
+        controllerThread_readsensor.detach();
+        thread controllerThread_readsensor_nlast(&Controller::getLastNSensorData, &controller, 5);
+        controllerThread_readsensor_nlast.detach();
     }
 
-    void start()
+    void
+    start()
     {
-        std::string command;
-        while (std::getline(std::cin, command))
+        string command;
+        while (getline(cin, command))
         {
             if (command == "1")
             {
@@ -265,14 +378,14 @@ public:
             {
                 // User request last n sensor data
                 int n;
-                std::cout << "Enter the value of n: ";
-                std::cin >> n;
-                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
+                cout << "Enter the value of n: ";
+                cin >> n;
+                cin.ignore(numeric_limits<streamsize>::max(), '\n');
                 user.getLastNSensorData(n);
             }
             else
             {
-                std::cout << "Invalid command!" << std::endl;
+                cout << "Invalid command!" << endl;
             }
         }
     }
@@ -281,6 +394,9 @@ private:
     Controller controller;
     User user;
     MoistureSensor sensor;
+    SoilLayer soilLayer_30;
+    SoilLayer soilLayer_60;
+    SoilLayer soilLayer_90;
 };
 
 int main()
