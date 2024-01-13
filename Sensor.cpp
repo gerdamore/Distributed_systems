@@ -106,9 +106,17 @@ private:
         std::ofstream storageFile("sensor_data.txt", std::ios::app);
         if (storageFile.is_open())
         {
-            storageFile << "[MoistureSensor_INFO] Moisture Level = " << moistureLevel << ", Time = " << std::ctime(&currentTime) << std::endl;
-            storageFile.close();
-            storageUsed += sizeof(moistureLevel) + sizeof(currentTime);
+            int dataSize = sizeof(moistureLevel) + sizeof(currentTime);
+            if (storageUsed + dataSize <= MoistureSensor::storageSize)
+            {
+                storageFile << "[MoistureSensor_INFO] Moisture Level = " << moistureLevel << ", Time = " << std::ctime(&currentTime) << std::endl;
+                storageFile.close();
+                storageUsed += dataSize;
+            }
+            else
+            {
+                std::cout << "[MoistureSensor_ERROR] Storage capacity exceeded!" << std::endl;
+            }
         }
         else
         {
@@ -133,7 +141,7 @@ public:
             while (true)
             {
                 std::time_t currentTime = std::time(nullptr);
-                std::string data = "Moisture Level = " + std::to_string(wifiData.moistureLevel) + ", Time = " + std::ctime(&currentTime);
+                std::string data = "Moisture Level = " + std::to_string(wifiData.moistureLevel) + ", Time = " + std::ctime(&wifiData.currentTime);
                 outputFile << data << std::endl;
                 std::cout << "[Controller_INFO] Received data: " << data;
                 std::this_thread::sleep_for(std::chrono::minutes(1));
