@@ -39,7 +39,7 @@ public:
         frequency = freq;
         storageSize = maxSize;
         storageUsed = 0;
-        depth = depth;
+        depth = d;
     }
 
     void setFrequency(int freq)
@@ -332,7 +332,7 @@ public:
 
     double calculateSoilWaterDepletion(double volumetricWaterContent)
     {
-        double waterDepletion = (fieldCapacity * thickness) - (volumetricWaterContent * thickness);
+        double waterDepletion = (fieldCapacity * thickness) - (volumetricWaterContent / 100 * thickness);
         return waterDepletion;
     }
 };
@@ -363,6 +363,21 @@ public:
         controllerThread_readsensor_nlast.detach();
     }
 
+    void checkSensorLayer()
+    {
+        for (const auto &layer : {soilLayer_30, soilLayer_60, soilLayer_90})
+        {
+            if (layer.depth == sensor.getDepth())
+            {
+                // Calculate soil water depletion
+                // print soil water depletion and soil layer depth
+                cout << "Soil water depletion at depth " << layer.depth << ": " << soilLayer_30.calculateSoilWaterDepletion(sensor.readSensor().moistureLevel) << " cm" << endl;
+                return;
+            }
+        }
+        cout << "No matching soil layer found for the sensor." << endl;
+    }
+
     void
     start()
     {
@@ -382,6 +397,10 @@ public:
                 cin >> n;
                 cin.ignore(numeric_limits<streamsize>::max(), '\n');
                 user.getLastNSensorData(n);
+            }
+            else if (command == "3")
+            {
+                checkSensorLayer();
             }
             else
             {
