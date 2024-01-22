@@ -38,27 +38,208 @@ std::string get_Word(const std::string &input, int n)
     return word;
 }
 
+struct WifiChannel
+{
+    int channel;
+    bool active;
+    bool probe_response;
+    bool authenticated;
+    int associated;
+};
+
+class WirelessCommunication
+{
+public:
+    WirelessCommunication()
+    {
+        active_channels = {{1, false, false, false, -1}, {6, false, false, false, -1}, {11, false, false, false, -1}};
+    }
+
+    void connectToWifi()
+    {
+        // Connect to wifi
+        // Implement your logic here
+        cout << "[WirelessCommunication_INFO] Connecting to wifi..." << endl;
+        this_thread::sleep_for(chrono::seconds(2));
+        cout << "[WirelessCommunication_INFO] Wifi connected!" << endl;
+    }
+
+    void sendSensorDataToWifi(int moistureLevel, string currentTime)
+    {
+        // Send sensor data to wifi
+        // Implement your logic here
+        cout << "[WirelessCommunication_INFO] Sending sensor data to wifi: Moisture Level = " << to_string(moistureLevel) << ", Time = " << (currentTime) << endl;
+        wifiData.currentTime = currentTime;
+        wifiData.moistureLevel = moistureLevel;
+    }
+
+    bool send_association_response(int channel_number)
+    {
+        for (int i = 0; i < active_channels.size(); i++)
+        {
+            if (active_channels[i]
+                        .authenticated == true &&
+                active_channels[i].channel == channel_number)
+            {
+                active_channels[i].associated = 1;
+                string association_response = "[WirelessCommunication_INFO] Sending association response on channel : " + to_string(active_channels[i].channel);
+                cout << association_response << endl;
+                return 1;
+            }
+        }
+        return 0;
+    }
+
+    bool send_probe_response(int channel_number)
+    {
+        for (int i = 0; i < active_channels.size(); i++)
+        {
+            if (active_channels[i]
+                        .active == true &&
+                active_channels[i].channel == channel_number)
+            {
+                active_channels[i].probe_response = true;
+                string probe_response = "[WirelessCommunication_INFO] Sending probe response on channel : " + to_string(active_channels[i].channel);
+                cout << probe_response << endl;
+                return true;
+            }
+        }
+        return false;
+    }
+
+    // TODO: model when it is not associated
+    bool waiting_for_association(int channel_number)
+    {
+        for (int i = 0; i < active_channels.size(); i++)
+        {
+            if (active_channels[i]
+                        .authenticated == true &&
+                active_channels[i].channel == channel_number && active_channels[i].associated == 1)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    bool waiting_for_authentication(int channel_number)
+    {
+        for (int i = 0; i < active_channels.size(); i++)
+        {
+            if (active_channels[i]
+                        .authenticated == true &&
+                active_channels[i].channel == channel_number)
+            {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    void send_back_authentication_result(int channel_number)
+    {
+        for (int i = 0; i < active_channels.size(); i++)
+        {
+            if (active_channels[i]
+                        .active == true &&
+                active_channels[i].channel == channel_number)
+            {
+                string authentication_result = "[WirelessCommunication_INFO] Sending authentication result on channel : " + to_string(active_channels[i].channel);
+                cout << authentication_result << endl;
+                active_channels[i].authenticated = true;
+            }
+        }
+    }
+
+    void authenticate_request(int channel_number)
+    {
+
+        for (int i = 0; i < active_channels.size(); i++)
+        {
+            if (active_channels[i]
+                        .active == true &&
+                active_channels[i].channel == channel_number)
+            {
+                string authenticate_request = "[WirelessCommunication_INFO] Authenticating request on channel : " + to_string(active_channels[i].channel);
+                cout << authenticate_request << endl;
+                send_back_authentication_result(channel_number);
+            }
+        }
+    }
+
+    void association_request(int channel_number)
+    {
+        for (int i = 0; i < active_channels.size(); i++)
+        {
+            if (active_channels[i]
+                        .authenticated == true &&
+                active_channels[i].channel == channel_number)
+            {
+                string association_request = "[WirelessCommunication_INFO] Association request on channel : " + to_string(active_channels[i].channel);
+                cout << association_request << endl;
+                send_association_response(channel_number);
+            }
+        }
+    }
+
+    void send_probe_request(int i)
+    {
+        string probe_request = "[WirelessCommunication_INFO] Sending probe request on channel and waiting for reply: " + to_string(active_channels[i].channel);
+        cout << probe_request << endl;
+    }
+
+    void active_scanning()
+    {
+        // get size of active_channels
+
+        while (true)
+        {
+            for (int i = 0; i < active_channels.size(); i++)
+            {
+                if (active_channels[i].active == false)
+                {
+                    active_channels[i].active = true;
+                    send_probe_request(i);
+                    this_thread::sleep_for(chrono::seconds(100));
+                    active_channels[i].active = false;
+                }
+            }
+        }
+    }
+
+private:
+    vector<WifiChannel> active_channels;
+};
+
 class MoistureSensor
 {
-private:
-    int frequency;
-    int storageUsed;
-    int depth;
-    int line_number;
-    string filename;
-
 public:
     MoistureSensor() : frequency(0), storageUsed(0), depth(0), line_number(2)
     {
     }
 
-    MoistureSensor(int freq, int d, string f)
+    MoistureSensor(int freq, int d, string f, WirelessCommunication *w)
     {
         line_number = 0;
         storageUsed = 0;
         frequency = freq;
         depth = d;
         filename = f;
+        communication = w;
+    }
+
+    void init_communication()
+    {
+        cout << "[MoistureSensor_INFO: " << depth << "] Initializing communication on channel 1" << endl;
+        while ((*communication).send_probe_response(1) == false)
+            ;
+        (*communication).authenticate_request(1);
+        while ((*communication).waiting_for_authentication(1) == false)
+            ;
+        (*communication).association_request(1);
+        while ((*communication).waiting_for_association(1) == false)
+            ;
+        cout << "[MoistureSensor_INFO: " << depth << "] Initializing communication FINISHED on channel 1" << endl;
     }
 
     void setFilename(string filename)
@@ -69,43 +250,6 @@ public:
     int getDepth()
     {
         return depth;
-    }
-
-    SensorData get_data_from_line(string line)
-    {
-        SensorData sensorData{0, ""};
-        sensorData.moistureLevel = stod(get_Word(line, depth / 30 + 2));
-        sensorData.currentTime = get_Word(line, 1);
-        return sensorData;
-    }
-
-    SensorData readSensor()
-    {
-        ifstream inputFile(this->filename);
-
-        SensorData sensorData{0, ""};
-        if (inputFile.is_open())
-        {
-            string line;
-            int line_number = 0;
-            while (getline(inputFile, line))
-            {
-
-                if (line_number == this->line_number)
-                {
-                    sensorData = get_data_from_line(line);
-                    this->line_number++;
-                    break;
-                }
-                line_number++;
-            }
-            inputFile.close();
-        }
-        else
-        {
-            cout << "[MoistureSensor_ERROR] Failed to open input file!" << endl;
-        }
-        return sensorData;
     }
 
     void readSensorData()
@@ -125,13 +269,16 @@ public:
             }
 
             // Sleep for the set frequency in minutes
+            this->line_number++;
             this_thread::sleep_for(chrono::minutes(frequency));
         }
     }
 
     void readSensorDataOnceAndSend()
     {
-        SensorData wifiData = readSensor();
+        SensorData sensor_data = readSensor();
+        // get a close read of the sensor data
+        sensor_data.moistureLevel += rand() % 100;
         if (isWifiConnected())
         {
             sendSensorDataToWifi(wifiData.moistureLevel, wifiData.currentTime);
@@ -149,6 +296,34 @@ public:
         cout << "[MoistureSensor_INFO] Calibration completed!" << endl;
     }
 
+    SensorData readSensor()
+    {
+        ifstream inputFile(this->filename);
+
+        SensorData sensorData{0, ""};
+        if (inputFile.is_open())
+        {
+            string line;
+            int line_number = 0;
+            while (getline(inputFile, line))
+            {
+
+                if (line_number == this->line_number)
+                {
+                    sensorData = get_data_from_line(line);
+                    break;
+                }
+                line_number++;
+            }
+            inputFile.close();
+        }
+        else
+        {
+            cout << "[MoistureSensor_ERROR] Failed to open input file!" << endl;
+        }
+        return sensorData;
+    }
+
 private:
     bool isWifiConnected()
     {
@@ -160,10 +335,7 @@ private:
     void sendSensorDataToWifi(int moistureLevel, string currentTime)
     {
         // Send sensor data to wifi
-        // Implement your logic here
-        cout << "[MoistureSensor_INFO] Sending sensor data to wifi: Moisture Level = " << to_string(moistureLevel) << ", Time = " << (currentTime) << endl;
-        wifiData.currentTime = currentTime;
-        wifiData.moistureLevel = moistureLevel;
+        (*communication).sendSensorDataToWifi(moistureLevel, currentTime);
     }
 
     void storeSensorDataInStorage(int moistureLevel, string currentTime)
@@ -190,6 +362,21 @@ private:
             cout << "[MoistureSensor_ERROR] Failed to open storage file!" << endl;
         }
     }
+
+    SensorData get_data_from_line(string line)
+    {
+        SensorData sensorData{0, ""};
+        sensorData.moistureLevel = stod(get_Word(line, depth / 30 + 2));
+        sensorData.currentTime = get_Word(line, 1);
+        return sensorData;
+    }
+
+    int frequency;
+    int storageUsed;
+    int depth;
+    int line_number;
+    string filename;
+    WirelessCommunication *communication;
 };
 
 class Controller
@@ -200,11 +387,6 @@ public:
     Controller(const vector<MoistureSensor> &sensors) : sensors(sensors)
     {
         connectToWifi();
-    }
-
-    void set_Sensor(const vector<MoistureSensor> &sensors)
-    {
-        this->sensors = sensors;
     }
 
     void receiveDataFromWifi()
@@ -466,13 +648,22 @@ public:
     {
         string folder = select_rand_folder();
         string file = select_rand_file(folder);
+
+        this->communication = WirelessCommunication();
         this->soilLayer_30 = SoilLayer(30.0, 30.0, 0.25, 50.0);
         this->soilLayer_60 = SoilLayer(60.0, 30.0, 0.21, 45.0);
         this->soilLayer_90 = SoilLayer(90.0, 30.0, 0.19, 37.0);
-        this->sensor = MoistureSensor(1, 30, file);
+        // Fix: Ensure that the constructor arguments match the argument list being passed
+        this->sensor = MoistureSensor(1, 30, file, &communication);
         this->controller = Controller({sensor});
         this->user = User();
 
+        thread communicationThread(&WirelessCommunication::active_scanning, &communication);
+        // wait for 10 seconds
+        this_thread::sleep_for(chrono::seconds(10));
+        sensor.init_communication();
+
+        communicationThread.detach();
         sensor.calibrate();
         thread sensorThread(&MoistureSensor::readSensorData, &sensor);
         sensorThread.detach();
@@ -536,6 +727,7 @@ private:
     SoilLayer soilLayer_30;
     SoilLayer soilLayer_60;
     SoilLayer soilLayer_90;
+    WirelessCommunication communication;
 };
 
 int main()
