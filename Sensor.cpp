@@ -53,24 +53,30 @@ public:
     WirelessCommunication()
     {
         active_channels = {{1, false, false, false, -1}, {6, false, false, false, -1}, {11, false, false, false, -1}};
+        received_data = false;
     }
 
-    void connectToWifi()
+    string getFrame()
     {
-        // Connect to wifi
-        // Implement your logic here
-        cout << "[WirelessCommunication_INFO] Connecting to wifi..." << endl;
+        return data;
+    }
+
+    bool receiveFrame()
+    {
+        if (received_data == true)
+        {
+            received_data = false;
+            return true;
+        }
+        return false;
+    }
+
+    void sendFrame(double moistureLevel, string currentTime)
+    {
+        data = to_string(moistureLevel) + ", " + currentTime;
+        // sleep for 10 seconds
         this_thread::sleep_for(chrono::seconds(2));
-        cout << "[WirelessCommunication_INFO] Wifi connected!" << endl;
-    }
-
-    void sendSensorDataToWifi(int moistureLevel, string currentTime)
-    {
-        // Send sensor data to wifi
-        // Implement your logic here
-        cout << "[WirelessCommunication_INFO] Sending sensor data to wifi: Moisture Level = " << to_string(moistureLevel) << ", Time = " << (currentTime) << endl;
-        wifiData.currentTime = currentTime;
-        wifiData.moistureLevel = moistureLevel;
+        received_data = true;
     }
 
     bool send_association_response(int channel_number)
@@ -209,6 +215,8 @@ public:
 
 private:
     vector<WifiChannel> active_channels;
+    bool received_data;
+    string data;
 };
 
 class MoistureSensor
@@ -332,13 +340,13 @@ private:
         return true; // Assuming wifi is connected for demonstration purposes
     }
 
-    void sendSensorDataToWifi(int moistureLevel, string currentTime)
+    void sendSensorDataToWifi(double moistureLevel, string currentTime)
     {
         // Send sensor data to wifi
-        (*communication).sendSensorDataToWifi(moistureLevel, currentTime);
+        (*communication).sendFrame(moistureLevel, currentTime);
     }
 
-    void storeSensorDataInStorage(int moistureLevel, string currentTime)
+    void storeSensorDataInStorage(double moistureLevel, string currentTime)
     {
         // Store sensor data in internal storage (file)
         // Implement your logic here
@@ -384,36 +392,35 @@ class Controller
 public:
     Controller() {}
 
-    Controller(const vector<MoistureSensor> &sensors) : sensors(sensors)
+    Controller(const vector<MoistureSensor> &sensors, WirelessCommunication *w) : sensors(sensors)
     {
-        connectToWifi();
+        communication = w;
     }
 
     void receiveDataFromWifi()
     {
-        ofstream outputFile("received_data.txt", ios::app);
-        if (outputFile.is_open())
+        while (true)
         {
-            while (true)
+            while (!(*communication).receiveFrame())
+                ;
+            string data = (*communication).getFrame();
+            ofstream outputFile("received_data.txt", ios::app);
+            if (outputFile.is_open())
             {
-                for (MoistureSensor &sensor : sensors)
-                {
-                    SensorData wifiData = sensor.readSensor();
-                    string data = "[Controller_INFO] Moisture Level = " + to_string(wifiData.moistureLevel) + ", Time = " + wifiData.currentTime;
-                    outputFile << data << endl;
-                    cout << data << endl;
-                }
-                this_thread::sleep_for(chrono::minutes(1));
+                string moisture_data = "[Controller_INFO] Moisture Level = " + data;
+                outputFile << moisture_data << endl;
+                cout << moisture_data << endl;
+                outputFile.close();
             }
-            outputFile.close();
-        }
-        else
-        {
-            cout << "[Controller_ERROR] Failed to open output file!" << endl;
+            else
+            {
+                cout << "[Controller_ERROR] Failed to open output file!" << endl;
+            }
         }
     }
 
-    void getLastNSensorData(int n)
+    void
+    getLastNSensorData(int n)
     {
         while (true)
         {
@@ -479,6 +486,7 @@ public:
 
 private:
     vector<MoistureSensor> sensors;
+    WirelessCommunication *communication;
     void connectToWifi()
     {
         // Connect to wifi
@@ -653,14 +661,12 @@ public:
         this->soilLayer_30 = SoilLayer(30.0, 30.0, 0.25, 50.0);
         this->soilLayer_60 = SoilLayer(60.0, 30.0, 0.21, 45.0);
         this->soilLayer_90 = SoilLayer(90.0, 30.0, 0.19, 37.0);
-        // Fix: Ensure that the constructor arguments match the argument list being passed
         this->sensor = MoistureSensor(1, 30, file, &communication);
-        this->controller = Controller({sensor});
+        this->controller = Controller({sensor}, &communication);
         this->user = User();
 
         thread communicationThread(&WirelessCommunication::active_scanning, &communication);
-        // wait for 10 seconds
-        this_thread::sleep_for(chrono::seconds(10));
+        this_thread::sleep_for(chrono::seconds(5));
         sensor.init_communication();
 
         communicationThread.detach();
@@ -681,8 +687,6 @@ public:
         {
             if (layer.depth == sensor.getDepth())
             {
-                // Calculate soil water depletion
-                // print soil water depletion and soil layer depth
                 cout << "[IrrigationSystem_INFO] Soil water depletion at depth " << layer.depth << ": " << soilLayer_30.calculateSoilWaterDepletion(sensor.readSensor().moistureLevel) << " cm" << endl;
                 return;
             }
