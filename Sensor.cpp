@@ -5,7 +5,11 @@
 #include <chrono>
 #include <vector>
 #include <deque>
+#include <dirent.h>
 #include <cstdlib> // For rand()
+#include <cstring>
+#include <string.h>
+#include <sstream>
 
 using namespace std;
 
@@ -16,35 +20,50 @@ int request_nlast_Data = 0;
 
 struct SensorData
 {
-    int moistureLevel;
-    time_t currentTime;
+    double moistureLevel;
+    string currentTime;
 };
 SensorData wifiData;
+
+#define STORAGE_SIZE_MAX 4096
+
+std::string get_Word(const std::string &input, int n)
+{
+    std::istringstream iss(input);
+    std::string word;
+
+    for (int i = 0; i <= n; i++)
+        iss >> word;
+
+    return word;
+}
 
 class MoistureSensor
 {
 private:
     int frequency;
-    int storageSize;
     int storageUsed;
     int depth;
+    int line_number;
+    string filename;
 
 public:
-    MoistureSensor() : frequency(0), storageSize(0), storageUsed(0), depth(0)
+    MoistureSensor() : frequency(0), storageUsed(0), depth(0), line_number(2)
     {
     }
 
-    MoistureSensor(int freq, int maxSize, int d)
+    MoistureSensor(int freq, int d, string f)
     {
-        frequency = freq;
-        storageSize = maxSize;
+        line_number = 0;
         storageUsed = 0;
+        frequency = freq;
         depth = d;
+        filename = f;
     }
 
-    void setFrequency(int freq)
+    void setFilename(string filename)
     {
-        frequency = freq;
+        this->filename = filename;
     }
 
     int getDepth()
@@ -52,13 +71,41 @@ public:
         return depth;
     }
 
+    SensorData get_data_from_line(string line)
+    {
+        SensorData sensorData{0, ""};
+        sensorData.moistureLevel = stod(get_Word(line, depth / 30 + 2));
+        sensorData.currentTime = get_Word(line, 1);
+        return sensorData;
+    }
+
     SensorData readSensor()
     {
-        SensorData data;
-        data.moistureLevel = rand() % 101;
-        data.currentTime = time(nullptr);
+        ifstream inputFile(this->filename);
 
-        return data;
+        SensorData sensorData{0, ""};
+        if (inputFile.is_open())
+        {
+            string line;
+            int line_number = 0;
+            while (getline(inputFile, line))
+            {
+
+                if (line_number == this->line_number)
+                {
+                    sensorData = get_data_from_line(line);
+                    this->line_number++;
+                    break;
+                }
+                line_number++;
+            }
+            inputFile.close();
+        }
+        else
+        {
+            cout << "[MoistureSensor_ERROR] Failed to open input file!" << endl;
+        }
+        return sensorData;
     }
 
     void readSensorData()
@@ -67,17 +114,14 @@ public:
         // Read sensor data at set frequency
         while (true)
         {
-
-            int moistureLevel = rand() % 101; // Randomize the moisture level between 0 and 100
-            time_t currentTime = time(nullptr);
-
+            SensorData wifiData = readSensor();
             if (isWifiConnected())
             {
-                sendSensorDataToWifi(moistureLevel, currentTime);
+                sendSensorDataToWifi(wifiData.moistureLevel, wifiData.currentTime);
             }
             else
             {
-                storeSensorDataInStorage(moistureLevel, currentTime);
+                storeSensorDataInStorage(wifiData.moistureLevel, wifiData.currentTime);
             }
 
             // Sleep for the set frequency in minutes
@@ -87,12 +131,10 @@ public:
 
     void readSensorDataOnceAndSend()
     {
-        int moistureLevel = rand() % 101; // Randomize the moisture level between 0 and 100
-        time_t currentTime = time(nullptr);
-
+        SensorData wifiData = readSensor();
         if (isWifiConnected())
         {
-            sendSensorDataToWifi(moistureLevel, currentTime);
+            sendSensorDataToWifi(wifiData.moistureLevel, wifiData.currentTime);
         }
         else
         {
@@ -115,16 +157,16 @@ private:
         return true; // Assuming wifi is connected for demonstration purposes
     }
 
-    void sendSensorDataToWifi(int moistureLevel, time_t currentTime)
+    void sendSensorDataToWifi(int moistureLevel, string currentTime)
     {
         // Send sensor data to wifi
         // Implement your logic here
-        cout << "[MoistureSensor_INFO] Sending sensor data to wifi: Moisture Level = " << moistureLevel << ", Time = " << ctime(&currentTime);
+        cout << "[MoistureSensor_INFO] Sending sensor data to wifi: Moisture Level = " << to_string(moistureLevel) << ", Time = " << (currentTime) << endl;
         wifiData.currentTime = currentTime;
         wifiData.moistureLevel = moistureLevel;
     }
 
-    void storeSensorDataInStorage(int moistureLevel, time_t currentTime)
+    void storeSensorDataInStorage(int moistureLevel, string currentTime)
     {
         // Store sensor data in internal storage (file)
         // Implement your logic here
@@ -132,9 +174,9 @@ private:
         if (storageFile.is_open())
         {
             int dataSize = sizeof(moistureLevel) + sizeof(currentTime);
-            if (storageUsed + dataSize <= MoistureSensor::storageSize)
+            if (storageUsed + dataSize <= STORAGE_SIZE_MAX)
             {
-                storageFile << "[MoistureSensor_INFO] Moisture Level = " << moistureLevel << ", Time = " << ctime(&currentTime) << endl;
+                storageFile << "[MoistureSensor_INFO] Moisture Level = " << moistureLevel << ", Time = " << currentTime << endl;
                 storageFile.close();
                 storageUsed += dataSize;
             }
@@ -172,13 +214,12 @@ public:
         {
             while (true)
             {
-                time_t currentTime = time(nullptr);
                 for (MoistureSensor &sensor : sensors)
                 {
                     SensorData wifiData = sensor.readSensor();
-                    string data = "Moisture Level = " + to_string(wifiData.moistureLevel) + ", Time = " + ctime(&wifiData.currentTime);
+                    string data = "[Controller_INFO] Moisture Level = " + to_string(wifiData.moistureLevel) + ", Time = " + wifiData.currentTime;
                     outputFile << data << endl;
-                    cout << "[Controller_INFO] Received data: " << data;
+                    cout << data << endl;
                 }
                 this_thread::sleep_for(chrono::minutes(1));
             }
@@ -243,7 +284,7 @@ public:
                 for (MoistureSensor &sensor : sensors)
                 {
                     SensorData sensorData = sensor.readSensor();
-                    string data = "Moisture Level = " + to_string(sensorData.moistureLevel) + ", Time = " + ctime(&sensorData.currentTime);
+                    string data = "[Controller_INFO] Moisture Level = " + to_string(sensorData.moistureLevel) + ", Time = " + sensorData.currentTime;
                     int depth = sensor.getDepth();
                     sensorDataWithDepth += "Sensor Depth = " + to_string(depth) + ", " + data + "\n";
                 }
@@ -342,13 +383,93 @@ class IrrigationSystem
 public:
     // Set frequency to 60 minutes and storage size to 4KB
 
+    string select_rand_folder()
+    {
+        srand(time(0)); // Seed the random number generator
+        vector<string> folders;
+        string folderPath = "./Distributed_systems/sensor_data_CAF"; // Replace with the actual folder path
+
+        // Read the contents of the folder
+        DIR *dir;
+        struct dirent *ent;
+
+        if ((dir = opendir(folderPath.c_str())) != NULL)
+
+        {
+            while ((ent = readdir(dir)) != NULL)
+            {
+                if (ent->d_type == DT_DIR && strcmp(ent->d_name, ".") != 0 && strcmp(ent->d_name, "..") != 0)
+                {
+                    folders.push_back(ent->d_name);
+                }
+            }
+            closedir(dir);
+        }
+        else
+        {
+            cout << "[IrrigationSystem_ERROR] Failed to open folder: " << folderPath << endl;
+            return "";
+        }
+
+        if (folders.empty())
+        {
+            cout << "[IrrigationSystem_ERROR] No folders found in: " << folderPath << endl;
+            return "";
+        }
+
+        int randomIndex = rand() % folders.size();
+        string selectedFolder = folders[randomIndex];
+        cout << "[IrrigationSystem_INFO] Selected folder: " << selectedFolder << endl;
+        return folderPath + "/" + selectedFolder;
+    }
+
+    string select_rand_file(string folderPath)
+    {
+        srand(time(0)); // Seed the random number generator
+        vector<string> files;
+        // Open a random file in the selected folder
+        string folderPathWithFile = folderPath;
+        // Read the contents of the folder
+        DIR *dir;
+        struct dirent *ent;
+
+        if ((dir = opendir(folderPathWithFile.c_str())) != NULL)
+        {
+            while ((ent = readdir(dir)) != NULL)
+            {
+                if (ent->d_type == DT_REG)
+                {
+                    files.push_back(ent->d_name);
+                }
+            }
+            closedir(dir);
+        }
+        else
+        {
+            cout << "[IrrigationSystem_ERROR] Failed to open folder: " << folderPathWithFile << endl;
+            return "";
+        }
+
+        if (files.empty())
+        {
+            cout << "[IrrigationSystem_ERROR] No files found in: " << folderPathWithFile << endl;
+            return "";
+        }
+
+        int randomIndex = rand() % files.size();
+        string selectedFile = files[randomIndex];
+        cout << "[IrrigationSystem_INFO] Selected file: " << selectedFile << endl;
+        return folderPath + "/" + selectedFile;
+    }
+
     IrrigationSystem()
     {
-
+        string folder = select_rand_folder();
+        string file = select_rand_file(folder);
         this->soilLayer_30 = SoilLayer(30.0, 30.0, 0.25, 50.0);
         this->soilLayer_60 = SoilLayer(60.0, 30.0, 0.21, 45.0);
         this->soilLayer_90 = SoilLayer(90.0, 30.0, 0.19, 37.0);
-        this->sensor = MoistureSensor(1, 4096, 30);
+        this->sensor = MoistureSensor(1, 30, file);
         this->controller = Controller({sensor});
         this->user = User();
 
@@ -371,15 +492,14 @@ public:
             {
                 // Calculate soil water depletion
                 // print soil water depletion and soil layer depth
-                cout << "Soil water depletion at depth " << layer.depth << ": " << soilLayer_30.calculateSoilWaterDepletion(sensor.readSensor().moistureLevel) << " cm" << endl;
+                cout << "[IrrigationSystem_INFO] Soil water depletion at depth " << layer.depth << ": " << soilLayer_30.calculateSoilWaterDepletion(sensor.readSensor().moistureLevel) << " cm" << endl;
                 return;
             }
         }
-        cout << "No matching soil layer found for the sensor." << endl;
+        cout << "[IrrigationSystem_INFO] No matching soil layer found for the sensor." << endl;
     }
 
-    void
-    start()
+    void start()
     {
         string command;
         while (getline(cin, command))
@@ -404,7 +524,7 @@ public:
             }
             else
             {
-                cout << "Invalid command!" << endl;
+                cout << "[IrrigationSystem_ERROR] Invalid command!" << endl;
             }
         }
     }
