@@ -6,7 +6,7 @@
 #include <vector>
 #include <deque>
 #include <dirent.h>
-#include <cstdlib> // For rand()
+#include <cstdlib> 
 #include <cstring>
 #include <string.h>
 #include <sstream>
@@ -94,6 +94,7 @@ struct WifiChannel
     int associated;
 };
 
+// TODO : based on the frame received, decide what to do
 class WirelessCommunication
 {
 public:
@@ -615,8 +616,6 @@ public:
 class IrrigationSystem
 {
 public:
-    // Set frequency to 60 minutes and storage size to 4KB
-
     string select_rand_folder()
     {
         srand(time(0)); // Seed the random number generator
